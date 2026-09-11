@@ -3,6 +3,7 @@
 Rock paper scissors for 2 to 8 people who are never online at the same time. Everyone locks in a throw whenever they get around to it. When the last one lands, the round resolves. First to the target wins.
 
 - **Frontend**: one `public/index.html`, no build step. Polls the API every few seconds while a tab is open.
+- **CLI**: `bin/async-rps.mjs`, dependency free, runnable straight from GitHub with `npx`. See [CLI](#cli).
 - **API**: a Cloudflare Worker using [Hono](https://hono.dev), in `src/`.
 - **State**: [Turso](https://turso.tech) (libSQL). Three tables, see `schema.sql`.
 - **Sound**: a short chime plays when a round resolves, a longer one when the game ends, and a two-note blip when someone else joins while your tab is open, all synthesized with the Web Audio API. The bell button in the game header mutes it per browser. Coming back to a game you are in also plays the chime for whatever resolved while you were away. Browsers block audio on a page that has not been clicked yet, so sounds play only once the browser allows them; nothing is queued for later.
@@ -68,6 +69,25 @@ pnpm typecheck
 | GET | `/api/games/:id?player=<id>` | | Full state. Current round choices are hidden except your own. |
 | POST | `/api/games/:id/join` | `playerId, name` | Idempotent for an existing seat. 409 when full or the name is taken. |
 | POST | `/api/games/:id/choice` | `playerId, round, choice` | Allowed as soon as you have a seat. 409 if the round moved on, you already locked in, or the game is over. |
+
+## CLI
+
+No install, no dependencies, Node 18 or newer:
+
+```bash
+npx github:ctsstc/multi-player-rock-paper-scissors play CODE
+```
+
+`play` is a small terminal UI: it polls, shows the table, and takes `r`, `p`, `s` to throw, `j` to join, `m` to mute the bell, `q` to quit. The one-off commands are for people who would rather not leave a screen open:
+
+```bash
+npx github:ctsstc/multi-player-rock-paper-scissors new --players 3 --best-of 3 --name Cody
+npx github:ctsstc/multi-player-rock-paper-scissors join CODE --name Cody
+npx github:ctsstc/multi-player-rock-paper-scissors throw CODE rock
+npx github:ctsstc/multi-player-rock-paper-scissors show CODE
+```
+
+Your seat lives in `~/.config/async-rps/config.json`. `seat` prints the id and a link that moves the seat to a browser; `--me <id>` adopts a seat from a browser's personal link. `RPS_URL` points the CLI at another server, such as `http://localhost:8787` for `pnpm dev:local`. From a checkout, `pnpm cli` runs the same script.
 
 ## For agents
 

@@ -7,17 +7,16 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
+      '@hono/node-server':
+        specifier: ^2.1.1
+        version: 2.1.1(hono@4.13.7)
       '@libsql/client':
         specifier: ^0.18.0
         version: 0.18.0
       hono:
         specifier: ^4.13.7
         version: 4.13.7
-    devDependencies:
-      '@hono/node-server':
-        specifier: ^2.1.1
-        version: 2.1.1(hono@4.13.7)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
