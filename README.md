@@ -72,7 +72,7 @@ pnpm typecheck
 
 ## CLI
 
-No install, no dependencies, Node 18 or newer:
+No install, no dependencies, Node 18 or newer. There is no `@latest` to append: npx re-resolves a `github:` spec against the default branch on every run, so you always get the current commit.
 
 ```bash
 npx github:ctsstc/multi-player-rock-paper-scissors play CODE
