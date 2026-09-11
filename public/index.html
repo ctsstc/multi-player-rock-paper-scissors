@@ -42,7 +42,10 @@
   table { width:100%; border-collapse:collapse; font-size:.95rem; }
   th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); white-space:nowrap; }
   th { color:var(--muted); font-weight:500; font-size:.8rem; }
-  .win { color:var(--win); font-weight:600; }
+  .move { display:inline-block; padding:3px 8px; border-radius:8px; line-height:1.4; }
+  .move.won { background:rgba(74,222,128,.18); box-shadow:inset 0 0 0 1px rgba(74,222,128,.45); }
+  .move.lost { background:rgba(248,113,113,.14); box-shadow:inset 0 0 0 1px rgba(248,113,113,.4); }
+  .mark { font-size:.7rem; margin-left:6px; vertical-align:middle; }
   .muted { color:var(--muted); }
   .banner { font-size:1.4rem; text-align:center; padding:24px 0; }
   code { background:var(--bg); padding:2px 6px; border-radius:6px; }
@@ -294,13 +297,16 @@ function game(id) {
 
   function history(s) {
     const rows = [...s.rounds].reverse().map((r) => {
-      const result = r.winningThrow
-        ? `<span class="win">${EMOJI[r.winningThrow]} ${r.winningThrow}</span> <span class="muted">${r.winners.map(esc).join(', ')}</span>`
-        : '<span class="muted">tie</span>';
-      return `<tr><td>${r.round}</td>${r.choices.map((c) => `<td>${EMOJI[c.choice]}</td>`).join('')}<td>${result}</td></tr>`;
+      const cells = r.choices.map((c) => {
+        const outcome = r.winningThrow ? (c.choice === r.winningThrow ? 'won' : 'lost') : '';
+        const mark = { won: '✅', lost: '❌', '': '' }[outcome];
+        return `<td><span class="move ${outcome}">${EMOJI[c.choice]}<span class="mark">${mark}</span></span></td>`;
+      }).join('');
+      const label = r.winningThrow ? r.round : `${r.round} <span class="muted">tie</span>`;
+      return `<tr><td>${label}</td>${cells}</tr>`;
     }).join('');
     return `<div class="card"><h2>Rounds</h2><div style="overflow-x:auto"><table>
-      <thead><tr><th>#</th>${s.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}<th>Result</th></tr></thead>
+      <thead><tr><th>#</th>${s.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
   }
 
