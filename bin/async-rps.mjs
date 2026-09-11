@@ -56,8 +56,19 @@ function gameCode(arg) {
   return last.split('?')[0].toUpperCase();
 }
 
-// Emoji render two cells wide and color codes render zero, so pad by visible width.
-const cell = (text, visible, width, color = '') => `${color}${text}${color ? A.reset : ''}${' '.repeat(Math.max(0, width - visible))}`;
+// Terminals draw emoji two cells wide (and sometimes advance only one), so measure by code point
+// and always follow an emoji with a space so the next glyph cannot land on top of it.
+const WIDE = new Set([0x270a, 0x270b, 0x270c]);
+function vwidth(str) {
+  let w = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0);
+    if (cp === 0xfe0f || cp === 0x200d) continue;
+    w += cp >= 0x1f000 || WIDE.has(cp) ? 2 : 1;
+  }
+  return w;
+}
+const pad = (text, width, color = '') => `${color}${text}${color ? A.reset : ''}${' '.repeat(Math.max(0, width - vwidth(text)))}`;
 
 function summary(s, opts = {}) {
   const you = s.players.find((p) => p.you);
@@ -68,7 +79,7 @@ function summary(s, opts = {}) {
   for (const p of s.players) {
     const lock = s.currentRound ? (s.currentRound.submitted.includes(p.name) ? '🔒' : '💭') : '  ';
     const label = p.you ? `${p.name} (you)` : p.name;
-    lines.push(`  ${lock} ${cell(label, label.length, 22, p.you ? A.blue : '')} ${p.wins} ${p.wins === 1 ? 'win' : 'wins'}`);
+    lines.push(`  ${lock} ${pad(label, 24, p.you ? A.blue : '')} ${p.wins} ${p.wins === 1 ? 'win' : 'wins'}`);
   }
   const open = s.playerCount - s.players.length;
   if (open > 0) lines.push(`  ${A.dim}${open} more ${open === 1 ? 'seat' : 'seats'} open${A.reset}`);
@@ -86,12 +97,12 @@ function summary(s, opts = {}) {
   }
   if (s.rounds.length) {
     lines.push('');
-    lines.push(`  ${A.dim}#   ${s.players.map((p) => p.name.slice(0, 8).padEnd(9)).join('')}${A.reset}`);
+    lines.push(`  ${A.dim}#   ${s.players.map((p) => pad([...p.name].slice(0, 9).join(''), 11)).join('')}${A.reset}`);
     for (const r of [...s.rounds].reverse()) {
       const cells = r.choices.map((c) => {
-        if (!r.winningThrow) return cell(EMOJI[c.choice], 2, 9);
+        if (!r.winningThrow) return pad(`${EMOJI[c.choice]} `, 11);
         const won = c.choice === r.winningThrow;
-        return `${EMOJI[c.choice]}${cell(won ? '✔' : '✘', 1, 7, won ? A.green : A.red)}`;
+        return `${EMOJI[c.choice]} ${pad(won ? '✔' : '✘', 8, won ? A.green : A.red)}`;
       });
       lines.push(`  ${String(r.round).padEnd(4)}${cells.join('')}${r.winningThrow ? '' : `${A.dim}tie${A.reset}`}`);
     }
@@ -107,7 +118,8 @@ async function play(id, me, opts) {
   let state = null, msg = '', muted = !!opts.mute, seenRounds = null, timer = null, lastChange = Date.now();
   const render = () => {
     const body = state ? summary(state, { tui: true, name: me.name }) : 'Loading...';
-    const foot = `${A.dim}q quit  m ${muted ? 'unmute' : 'mute'}  refreshes every ${pollInterval(Date.now() - lastChange) / 1000}s${A.reset}`;
+    const cadence = state?.status === 'finished' ? 'game over, no more refreshing' : `refreshes every ${pollInterval(Date.now() - lastChange) / 1000}s`;
+    const foot = `${A.dim}q quit  m ${muted ? 'unmute' : 'mute'}  ${cadence}${A.reset}`;
     stdout.write(`\x1b[2J\x1b[H${body}\n\n${msg ? `${A.yellow}${msg}${A.reset}\n` : ''}${foot}\n`);
   };
   const schedule = () => {
