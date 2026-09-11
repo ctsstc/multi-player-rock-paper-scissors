@@ -6,6 +6,7 @@ Rock paper scissors for 2 to 8 people who are never online at the same time. Eve
 - **API**: a Cloudflare Worker using [Hono](https://hono.dev), in `src/`.
 - **State**: [Turso](https://turso.tech) (libSQL). Three tables, see `schema.sql`.
 - **Sound**: a short chime plays when a round resolves and a longer one when the game ends, synthesized with the Web Audio API. The bell button in the game header mutes it per browser. Browsers block audio until the page has been clicked once, so a tab that was opened and never touched stays silent.
+- **Link previews**: `/g/CODE` pages are served through HTMLRewriter with Open Graph tags that say you have been invited and name the format, so Discord and friends unfurl them nicely. The icon is `public/og.png`.
 - **Identity**: no auth. Each browser mints a random id into `localStorage` on first visit and picks a display name per game. Names are unique within a game. Once joined, the page offers a personal link (`/g/CODE?me=<id>`) that moves your seat to another browser; the page stores the id and strips it from the address bar.
 
 ## Rules

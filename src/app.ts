@@ -39,6 +39,12 @@ async function loadGame(db: Client, id: string) {
   return { game, players: p.rows as unknown as PlayerRow[], choices: c.rows as unknown as ChoiceRow[] };
 }
 
+export async function gameSummary(db: Client, id: string) {
+  if (!CODE_RE.test(id)) return null;
+  const r = await db.execute({ sql: 'SELECT player_count, best_of FROM games WHERE id = ?', args: [id] });
+  return (r.rows[0] as unknown as { player_count: number; best_of: number } | undefined) ?? null;
+}
+
 async function stateOf(db: Client, id: string, viewerId: string | null) {
   const { game, players, choices } = await loadGame(db, id);
   return deriveState(game, players, choices, viewerId);
