@@ -188,6 +188,7 @@ const RUNS = {
   round: { notes: [523, 659, 784, 1047], step: 0.06, hold: 0.3 },
   win: { notes: [392, 523, 659, 784, 1047, 1319, 1568, 2093], step: 0.07, hold: 0.6 },
   lose: { notes: [523, 494, 440, 349], step: 0.16, hold: 0.7 },
+  join: { notes: [659, 988], step: 0.09, hold: 0.22 },
 };
 // Plays only when the browser already allows audio; a suspended context would otherwise
 // queue the notes and dump them on the next click. `gesture` is for handlers of a real click.
@@ -234,7 +235,9 @@ function game(id) {
       if (!prev && seen) news = next.rounds.length > seen.rounds || (next.status === 'finished' && seen.status !== 'finished');
       ls.set(seenKey, JSON.stringify({ rounds: next.rounds.length, status: next.status }));
     }
+    const newcomers = prev ? next.players.slice(prev.players.length) : [];
     if (news) chime(next.status !== 'finished' ? 'round' : you && you.name !== next.winner ? 'lose' : 'win');
+    else if (newcomers.length && !newcomers.some((p) => p.you)) chime('join');
     return changed;
   }
 
