@@ -99,27 +99,37 @@ function summary(s, opts = {}) {
   return lines.join('\n');
 }
 
+// Same backoff as the web page: quick after activity, then 15s, then 60s.
+const pollInterval = (idleMs) => (idleMs < 2 * 60 * 1000 ? 3000 : idleMs < 15 * 60 * 1000 ? 15000 : 60000);
+
 async function play(id, me, opts) {
   if (!stdin.isTTY) throw new Error('play needs a terminal; use show and throw instead');
-  let state = null, msg = '', muted = !!opts.mute, seenRounds = null, timer = null;
+  let state = null, msg = '', muted = !!opts.mute, seenRounds = null, timer = null, lastChange = Date.now();
   const render = () => {
     const body = state ? summary(state, { tui: true, name: me.name }) : 'Loading...';
-    const foot = `${A.dim}q quit  m ${muted ? 'unmute' : 'mute'}  refreshes every 3s${A.reset}`;
+    const foot = `${A.dim}q quit  m ${muted ? 'unmute' : 'mute'}  refreshes every ${pollInterval(Date.now() - lastChange) / 1000}s${A.reset}`;
     stdout.write(`\x1b[2J\x1b[H${body}\n\n${msg ? `${A.yellow}${msg}${A.reset}\n` : ''}${foot}\n`);
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    if (state?.status !== 'finished') timer = setTimeout(refresh, pollInterval(Date.now() - lastChange));
   };
   const refresh = async () => {
     try {
       const s = await api(`/games/${id}?player=${me.playerId}`);
+      if (JSON.stringify(s) !== JSON.stringify(state)) lastChange = Date.now();
       if (seenRounds !== null && s.rounds.length > seenRounds && !muted) stdout.write(BELL);
       seenRounds = s.rounds.length;
       state = s;
     } catch (err) { msg = err.message; }
     render();
-    if (state?.status === 'finished') clearInterval(timer);
+    schedule();
   };
   const post = async (path, body, ok) => {
+    lastChange = Date.now();
     try { state = await api(path, body); msg = ok; seenRounds = state.rounds.length; } catch (err) { msg = err.message; }
     render();
+    schedule();
   };
   const quit = () => { stdout.write('\x1b[?1049l'); stdin.setRawMode(false); process.exit(0); };
 
@@ -129,6 +139,7 @@ async function play(id, me, opts) {
   stdin.setEncoding('utf8');
   stdin.on('data', (key) => {
     if (key === 'q' || key === '\x03') return quit();
+    lastChange = Date.now();
     if (key === 'm') { muted = !muted; return render(); }
     if (!state) return;
     if (key === 'j' && !state.joined) return post(`/games/${id}/join`, { playerId: me.playerId, name: me.name }, `Joined as ${me.name}`);
@@ -138,7 +149,6 @@ async function play(id, me, opts) {
     }
   });
   await refresh();
-  timer = setInterval(refresh, 3000);
 }
 
 async function main() {

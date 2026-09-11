@@ -61,6 +61,17 @@ pnpm test        # game logic and API tests, in-memory libSQL
 pnpm typecheck
 ```
 
+## Quotas
+
+Everything runs on free tiers. The page and the terminal UI poll on the same schedule: every 2.5s (3s in the terminal) for two minutes after anything changes or you act, then every 15s, then every 60s after fifteen quiet minutes. A hidden browser tab does not poll at all and catches up when it becomes visible. Finished games stop polling.
+
+| Resource | Free limit | One idle open tab | Breaking point |
+| --- | --- | --- | --- |
+| Cloudflare Worker requests | 100,000 per day | 1,440 polls per day at 60s | About 69 tabs left open around the clock |
+| Turso rows read | 500M per month | Roughly 20 rows per poll | Not reachable before the Cloudflare limit |
+
+Static assets (the home page, icons) do not count as Worker requests; polls and `/g/CODE` page loads do. An edge cache would not help here because the Worker runs on every API request regardless, and Turso is nowhere near its limit. If it ever matters, the next step is push instead of poll.
+
 ## API
 
 | Method | Path | Body | Notes |

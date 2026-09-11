@@ -81,7 +81,10 @@
 <div id="toast"></div>
 <script>
 const EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
-const POLL_FAST_MS = 2500, POLL_SLOW_MS = 15000, FAST_WINDOW_MS = 2 * 60 * 1000;
+// Poll interval by time since anything last changed: quick while things are happening, then cheap.
+const POLL_TIERS = [[2 * 60 * 1000, 2500], [15 * 60 * 1000, 15000]];
+const POLL_IDLE_MS = 60000;
+const pollInterval = (idleMs) => POLL_TIERS.find(([window]) => idleMs < window)?.[1] ?? POLL_IDLE_MS;
 const $app = document.getElementById('app');
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -222,11 +225,10 @@ function game(id) {
   const myLink = `${link}?me=${me}`;
   let state = null, busy = false, timer = null, seq = 0, lastChange = Date.now();
 
-  // Poll quickly while things are happening, then back off so idle tabs stay cheap.
   function schedule() {
     clearTimeout(timer);
     if (!state || state.status === 'finished' || document.hidden) return;
-    timer = setTimeout(load, Date.now() - lastChange < FAST_WINDOW_MS ? POLL_FAST_MS : POLL_SLOW_MS);
+    timer = setTimeout(load, pollInterval(Date.now() - lastChange));
   }
 
   function apply(next) {
