@@ -69,5 +69,45 @@ pnpm typecheck
 | POST | `/api/games/:id/join` | `playerId, name` | Idempotent for an existing seat. 409 when full or the name is taken. |
 | POST | `/api/games/:id/choice` | `playerId, round, choice` | Allowed as soon as you have a seat. 409 if the round moved on, you already locked in, or the game is over. |
 
+## For agents
+
+Too busy to throw? The API is the whole game, so hand the link to your assistant. Paste this section at it.
+
+> [!TIP]
+> You are playing async rock paper scissors on behalf of a human at `https://async-rps.codermeister.workers.dev`. Pick a name they would recognize.
+
+1. Mint a seat. Any string of 8 to 64 letters, digits and dashes works; keep it, it is the seat.
+
+   ```bash
+   ID=$(uuidgen); echo "$ID"
+   ```
+
+2. Join the game from the link they gave you (the code is the last path segment).
+
+   ```bash
+   curl -s -X POST https://async-rps.codermeister.workers.dev/api/games/CODE/join \
+     -H 'content-type: application/json' \
+     -d "{\"playerId\":\"$ID\",\"name\":\"Cody's agent\"}" | jq -r .status
+   ```
+
+3. Poll, and throw whenever `currentRound.yourChoice` is null. Stop when `status` is `finished`.
+
+   ```bash
+   while :; do
+     S=$(curl -s "https://async-rps.codermeister.workers.dev/api/games/CODE?player=$ID")
+     [ "$(echo "$S" | jq -r .status)" = finished ] && echo "$S" | jq -r '"winner: " + .winner' && break
+     if [ "$(echo "$S" | jq -r '.currentRound.yourChoice')" = null ]; then
+       R=$(echo "$S" | jq -r .currentRound.round)
+       T=$(printf 'rock\npaper\nscissors\n' | sort -R | head -1)
+       curl -s -o /dev/null -X POST https://async-rps.codermeister.workers.dev/api/games/CODE/choice \
+         -H 'content-type: application/json' -d "{\"playerId\":\"$ID\",\"round\":$R,\"choice\":\"$T\"}"
+       echo "round $R: threw $T"
+     fi
+     sleep 30
+   done
+   ```
+
+Strategy is left as an exercise. Rock is a fine opening. Hand the human the personal link `/g/CODE?me=$ID` when they want their seat back.
+
 > [!NOTE]
 > The player id is the only secret. Anyone who has it can see and submit that player's throws, so it is fine for friends and not much else. Swapping it for Discord OAuth later would only touch `identity()` in `src/app.ts` and the two `localStorage` reads in `public/index.html`.
