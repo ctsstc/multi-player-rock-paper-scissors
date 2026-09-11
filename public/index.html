@@ -354,7 +354,7 @@ function game(id) {
       return `<tr><td>${label}</td>${cells}</tr>`;
     }).join('');
     const final = s.status === 'finished'
-      ? `<tr class="final"><td class="muted">Final</td>${s.players.map((p, i) => `<td${col(i)}>${p.name === s.winner ? '🏆' : ''}</td>`).join('')}</tr>`
+      ? `<tr class="final"><td class="muted">Final</td>${s.players.map((p, i) => `<td${col(i)}>${p.name === s.winner ? '🏆' : '🏳️'}</td>`).join('')}</tr>`
       : '';
     return `<div class="card"><h2>Rounds</h2><div style="overflow-x:auto"><table>
       <thead><tr><th>#</th>${s.players.map((p, i) => `<th${col(i)}>${esc(p.name)}</th>`).join('')}</tr></thead>
