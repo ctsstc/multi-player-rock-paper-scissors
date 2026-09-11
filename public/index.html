@@ -186,13 +186,20 @@ const RUNS = {
   win: { notes: [392, 523, 659, 784, 1047, 1319, 1568, 2093], step: 0.07, hold: 0.6 },
   lose: { notes: [523, 494, 440, 349], step: 0.16, hold: 0.7 },
 };
-function chime(kind) {
+// Plays only when the browser already allows audio; a suspended context would otherwise
+// queue the notes and dump them on the next click. `gesture` is for handlers of a real click.
+function chime(kind, gesture = false) {
+  chime.last = kind;
   if (isMuted()) return;
   const ctx = audio();
   if (!ctx) return;
-  const t = ctx.currentTime + 0.02;
-  const { notes, step, hold } = RUNS[kind];
-  notes.forEach((f, i) => tone(ctx, f, t + i * step, i === notes.length - 1 ? hold : step * 1.4));
+  const play = () => {
+    const t = ctx.currentTime + 0.02;
+    const { notes, step, hold } = RUNS[kind];
+    notes.forEach((f, i) => tone(ctx, f, t + i * step, i === notes.length - 1 ? hold : step * 1.4));
+  };
+  if (ctx.state === 'running') play();
+  else if (gesture) ctx.resume().then(play).catch(() => {});
 }
 
 function game(id) {
@@ -214,13 +221,17 @@ function game(id) {
     const changed = JSON.stringify(next) !== JSON.stringify(prev);
     if (changed) lastChange = Date.now();
     state = next;
-    if (prev && next.rounds.length > prev.rounds.length) {
-      const you = next.players.find((p) => p.you);
-      const lost = next.status === 'finished' && you && you.name !== next.winner;
-      chime(next.status !== 'finished' ? 'round' : lost ? 'lose' : 'win');
-    }
     const you = next.players.find((p) => p.you);
-    if (you) ls.set('rps:name', you.name);
+    let news = prev ? next.rounds.length > prev.rounds.length : false;
+    if (you) {
+      ls.set('rps:name', you.name);
+      const seenKey = `rps:seen:${id}`;
+      let seen = null;
+      try { seen = JSON.parse(ls.get(seenKey)); } catch {}
+      if (!prev && seen) news = next.rounds.length > seen.rounds || (next.status === 'finished' && seen.status !== 'finished');
+      ls.set(seenKey, JSON.stringify({ rounds: next.rounds.length, status: next.status }));
+    }
+    if (news) chime(next.status !== 'finished' ? 'round' : you && you.name !== next.winner ? 'lose' : 'win');
     return changed;
   }
 
@@ -339,7 +350,7 @@ function game(id) {
     $app.querySelector('#mute')?.addEventListener('click', () => {
       ls.set('rps:muted', isMuted() ? '0' : '1');
       render();
-      if (isMuted()) toast('Sounds off'); else { toast('Sounds on'); chime('round'); }
+      if (isMuted()) toast('Sounds off'); else { toast('Sounds on'); chime('round', true); }
     });
     $app.querySelector('#copy-me')?.addEventListener('click', () => copyText(myLink, 'Personal link copied. Do not share it.'));
     $app.querySelector('#joinform')?.addEventListener('submit', (e) => {
