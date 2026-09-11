@@ -1,7 +1,7 @@
 import { createClient } from '@libsql/client/web';
 import { createApp, gameSummary } from './app.ts';
 
-const TAGLINE = 'Rock paper scissors for people who are never online at the same time.';
+const TAGLINE = 'Async rock paper scissors for people who are never online at the same time.';
 
 function setContent(value: string) {
   return { element: (el: Element) => { el.setAttribute('content', value); } };
