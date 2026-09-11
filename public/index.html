@@ -39,6 +39,11 @@
   .players li { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
   .players li:last-child { border-bottom:0; }
   .tag { font-size:.75rem; color:var(--muted); margin-left:6px; }
+  .players li.you { background:rgba(124,140,255,.1); margin:0 -8px; padding-left:8px; padding-right:8px; border-radius:8px; }
+  th.you, td.you { background:rgba(124,140,255,.1); }
+  th.you { color:var(--accent); }
+  tr.final td { font-size:1.2rem; border-bottom:2px solid var(--line); }
+  tr.final td:first-child { font-size:.8rem; }
   table { width:100%; border-collapse:collapse; font-size:.95rem; }
   th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); white-space:nowrap; }
   th { color:var(--muted); font-weight:500; font-size:.8rem; }
@@ -173,17 +178,19 @@ function tone(ctx, freq, at, dur) {
   osc.stop(at + dur);
 }
 
-// Original chiptune runs: a quick rising arpeggio for a round, a longer one with a held top note for the win.
-const ROUND_RUN = [523, 659, 784, 1047];
-const WIN_RUN = [392, 523, 659, 784, 1047, 1319, 1568, 2093];
+// Original chiptune runs: rising for a round, a longer rise for a win, a slow fall for a loss.
+const RUNS = {
+  round: { notes: [523, 659, 784, 1047], step: 0.06, hold: 0.3 },
+  win: { notes: [392, 523, 659, 784, 1047, 1319, 1568, 2093], step: 0.07, hold: 0.6 },
+  lose: { notes: [523, 494, 440, 349], step: 0.16, hold: 0.7 },
+};
 function chime(kind) {
   if (isMuted()) return;
   const ctx = audio();
   if (!ctx) return;
   const t = ctx.currentTime + 0.02;
-  const run = kind === 'win' ? WIN_RUN : ROUND_RUN;
-  const step = kind === 'win' ? 0.07 : 0.06;
-  run.forEach((f, i) => tone(ctx, f, t + i * step, i === run.length - 1 ? (kind === 'win' ? 0.6 : 0.3) : step * 1.4));
+  const { notes, step, hold } = RUNS[kind];
+  notes.forEach((f, i) => tone(ctx, f, t + i * step, i === notes.length - 1 ? hold : step * 1.4));
 }
 
 function game(id) {
@@ -205,7 +212,11 @@ function game(id) {
     const changed = JSON.stringify(next) !== JSON.stringify(prev);
     if (changed) lastChange = Date.now();
     state = next;
-    if (prev && next.rounds.length > prev.rounds.length) chime(next.status === 'finished' ? 'win' : 'round');
+    if (prev && next.rounds.length > prev.rounds.length) {
+      const you = next.players.find((p) => p.you);
+      const lost = next.status === 'finished' && you && you.name !== next.winner;
+      chime(next.status !== 'finished' ? 'round' : lost ? 'lose' : 'win');
+    }
     const you = next.players.find((p) => p.you);
     if (you) ls.set('rps:name', you.name);
     return changed;
@@ -250,7 +261,7 @@ function game(id) {
 
     html += `<div class="card"><h2>Players</h2><ul class="players">` + s.players.map((p) => {
       const lock = s.currentRound ? (s.currentRound.submitted.includes(p.name) ? '🔒 locked in' : '💭 thinking') : '';
-      return `<li><span>${esc(p.name)}${p.you ? '<span class="tag">(you)</span>' : ''}</span>
+      return `<li${p.you ? ' class="you"' : ''}><span>${esc(p.name)}${p.you ? '<span class="tag">(you)</span>' : ''}</span>
         <span><span class="muted">${lock}</span> &nbsp; <b>${p.wins}</b> ${p.wins === 1 ? 'win' : 'wins'}</span></li>`;
     }).join('') + `</ul>`;
     if (s.status === 'waiting') {
@@ -261,7 +272,7 @@ function game(id) {
 
     if (s.status === 'waiting' && !s.joined) html += joinForm();
     else if (s.status !== 'finished') html += playCard(s);
-    else html += `<div class="card banner">🏆 ${esc(s.winner)} wins!<br><a href="/" style="font-size:1rem">Start another game</a></div>`;
+    else html += `<div class="card banner">${finishBanner(s)}<br><a href="/" style="font-size:1rem">Start another game</a></div>`;
 
     if (s.rounds.length) html += history(s);
     if (s.joined) html += `<div class="card"><h2>Playing from another device?</h2>
@@ -269,6 +280,13 @@ function game(id) {
       <button class="ghost" id="copy-me">Copy my link</button></div>`;
     $app.innerHTML = html;
     wire();
+  }
+
+  function finishBanner(s) {
+    const you = s.players.find((p) => p.you);
+    if (!you) return `🏆 ${esc(s.winner)} wins!`;
+    if (you.name === s.winner) return '🏆 You win!';
+    return `🏳️ ${esc(s.winner)} wins. Not your day.`;
   }
 
   function joinForm() {
@@ -296,18 +314,22 @@ function game(id) {
   }
 
   function history(s) {
+    const col = (i) => (s.players[i].you ? ' class="you"' : '');
     const rows = [...s.rounds].reverse().map((r) => {
-      const cells = r.choices.map((c) => {
+      const cells = r.choices.map((c, i) => {
         const outcome = r.winningThrow ? (c.choice === r.winningThrow ? 'won' : 'lost') : '';
         const mark = { won: '✅', lost: '❌', '': '' }[outcome];
-        return `<td><span class="move ${outcome}">${EMOJI[c.choice]}<span class="mark">${mark}</span></span></td>`;
+        return `<td${col(i)}><span class="move ${outcome}">${EMOJI[c.choice]}<span class="mark">${mark}</span></span></td>`;
       }).join('');
       const label = r.winningThrow ? r.round : `${r.round} <span class="muted">tie</span>`;
       return `<tr><td>${label}</td>${cells}</tr>`;
     }).join('');
+    const final = s.status === 'finished'
+      ? `<tr class="final"><td class="muted">Final</td>${s.players.map((p, i) => `<td${col(i)}>${p.name === s.winner ? '🏆' : ''}</td>`).join('')}</tr>`
+      : '';
     return `<div class="card"><h2>Rounds</h2><div style="overflow-x:auto"><table>
-      <thead><tr><th>#</th>${s.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
-      <tbody>${rows}</tbody></table></div></div>`;
+      <thead><tr><th>#</th>${s.players.map((p, i) => `<th${col(i)}>${esc(p.name)}</th>`).join('')}</tr></thead>
+      <tbody>${final}${rows}</tbody></table></div></div>`;
   }
 
   function wire() {
