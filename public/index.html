@@ -133,6 +133,45 @@ async function copyText(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { prompt('Copy this link', text); }
 }
 
+const isMuted = () => ls.get('rps:muted') === '1';
+let audioCtx = null;
+// Browsers only let audio start after a user gesture, so the context is created on the first click.
+function audio() {
+  try {
+    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  } catch { return null; }
+}
+document.addEventListener('pointerdown', () => audio(), { once: true });
+
+function tone(ctx, freq, at, dur) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.exponentialRampToValueAtTime(0.06, at + 0.01);
+  gain.gain.setValueAtTime(0.06, at + dur * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(at);
+  osc.stop(at + dur);
+}
+
+// Original chiptune runs: a quick rising arpeggio for a round, a longer one with a held top note for the win.
+const ROUND_RUN = [523, 659, 784, 1047];
+const WIN_RUN = [392, 523, 659, 784, 1047, 1319, 1568, 2093];
+function chime(kind) {
+  if (isMuted()) return;
+  const ctx = audio();
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.02;
+  const run = kind === 'win' ? WIN_RUN : ROUND_RUN;
+  const step = kind === 'win' ? 0.07 : 0.06;
+  run.forEach((f, i) => tone(ctx, f, t + i * step, i === run.length - 1 ? (kind === 'win' ? 0.6 : 0.3) : step * 1.4));
+}
+
 function game(id) {
   adoptResumeId();
   const me = playerId();
@@ -148,9 +187,11 @@ function game(id) {
   }
 
   function apply(next) {
-    const changed = JSON.stringify(next) !== JSON.stringify(state);
+    const prev = state;
+    const changed = JSON.stringify(next) !== JSON.stringify(prev);
     if (changed) lastChange = Date.now();
     state = next;
+    if (prev && next.rounds.length > prev.rounds.length) chime(next.status === 'finished' ? 'win' : 'round');
     const you = next.players.find((p) => p.you);
     if (you) ls.set('rps:name', you.name);
     return changed;
@@ -189,7 +230,8 @@ function game(id) {
     const s = state;
     let html = `<div class="card row">
       <div>Game <code>${s.id}</code><br><span class="muted">${s.playerCount} players, best of ${s.bestOf} (first to ${s.target})</span></div>
-      <button class="ghost" id="copy">Copy invite link</button>
+      <span class="row"><button class="ghost" id="copy">Copy invite link</button>
+        <button class="ghost" id="mute" title="${isMuted() ? 'Sounds are off' : 'Sounds are on'}" aria-label="Toggle sounds">${isMuted() ? '🔕' : '🔔'}</button></span>
     </div>`;
 
     html += `<div class="card"><h2>Players</h2><ul class="players">` + s.players.map((p) => {
@@ -253,6 +295,11 @@ function game(id) {
 
   function wire() {
     $app.querySelector('#copy')?.addEventListener('click', () => copyText(link, 'Invite link copied'));
+    $app.querySelector('#mute')?.addEventListener('click', () => {
+      ls.set('rps:muted', isMuted() ? '0' : '1');
+      render();
+      if (isMuted()) toast('Sounds off'); else { toast('Sounds on'); chime('round'); }
+    });
     $app.querySelector('#copy-me')?.addEventListener('click', () => copyText(myLink, 'Personal link copied. Do not share it.'));
     $app.querySelector('#joinform')?.addEventListener('submit', (e) => {
       e.preventDefault();
