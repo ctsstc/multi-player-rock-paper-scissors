@@ -1,0 +1,71 @@
+# Async Rock Paper Scissors
+
+Rock paper scissors for 2 to 8 people who are never online at the same time. Everyone locks in a throw whenever they get around to it. When the last one lands, the round resolves. First to the target wins.
+
+- **Frontend**: one `public/index.html`, no build step. Polls the API every few seconds while a tab is open.
+- **API**: a Cloudflare Worker using [Hono](https://hono.dev), in `src/`.
+- **State**: [Turso](https://turso.tech) (libSQL). Three tables, see `schema.sql`.
+- **Identity**: no auth. Each browser mints a random id into `localStorage` on first visit and picks a display name per game. Names are unique within a game. Once joined, the page offers a personal link (`/g/CODE?me=<id>`) that moves your seat to another browser; the page stores the id and strips it from the address bar.
+
+## Rules
+
+Each round every player picks rock, paper or scissors. Picks are hidden until everyone has locked in. You can throw the moment you have a seat, before the other seats are even filled; a round resolves once every seat is taken and every player has thrown.
+
+- If exactly two different throws are on the table, the one that beats the other wins. Everyone who threw it gets a point.
+- If everyone threw the same thing, or all three throws are present, the round is a tie and you go again.
+- "Best of N" means first to `ceil(N / 2)` points. If two people reach it in the same round, play continues until someone is strictly ahead.
+
+Round outcomes are never stored. They are derived from the `choices` table on every read, which means there is no state machine to get out of sync and simultaneous submits cannot race each other.
+
+Live at https://async-rps.codermeister.workers.dev (Turso database `rps`, aws-us-west-2).
+
+## Deploy
+
+```bash
+pnpm install
+turso db create rps
+turso db shell rps < schema.sql
+turso db show rps --url
+turso db tokens create rps
+```
+
+Put the URL into `vars.TURSO_DATABASE_URL` in `wrangler.jsonc`, then:
+
+```bash
+pnpm wrangler secret put TURSO_AUTH_TOKEN
+pnpm deploy
+```
+
+Wrangler serves `public/` as static assets and routes everything else through the Worker. Share `https://<your-worker>.workers.dev/g/<CODE>` links.
+
+## Local development
+
+`pnpm dev:local` needs no Turso account. It runs the same Hono app under Node against a SQLite file (`local.db`) and serves `public/` on http://localhost:8787.
+
+To run under the real Workers runtime, point `wrangler dev` at a local libSQL server instead:
+
+```bash
+turso dev --db-file local.db
+turso db shell http://127.0.0.1:8080 < schema.sql
+cp .dev.vars.example .dev.vars
+pnpm dev
+```
+
+(`docker run -p 8080:8080 ghcr.io/tursodatabase/libsql-server` works in place of `turso dev`.)
+
+```bash
+pnpm test        # game logic and API tests, in-memory libSQL
+pnpm typecheck
+```
+
+## API
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | `/api/games` | `playerId, name, playerCount, bestOf` | Creates the game and seats the creator. Returns `{ id }`. |
+| GET | `/api/games/:id?player=<id>` | | Full state. Current round choices are hidden except your own. |
+| POST | `/api/games/:id/join` | `playerId, name` | Idempotent for an existing seat. 409 when full or the name is taken. |
+| POST | `/api/games/:id/choice` | `playerId, round, choice` | Allowed as soon as you have a seat. 409 if the round moved on, you already locked in, or the game is over. |
+
+> [!NOTE]
+> The player id is the only secret. Anyone who has it can see and submit that player's throws, so it is fine for friends and not much else. Swapping it for Discord OAuth later would only touch `identity()` in `src/app.ts` and the two `localStorage` reads in `public/index.html`.

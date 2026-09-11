@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "async-rps",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "TURSO_DATABASE_URL": "libsql://rps-ctsstc.aws-us-west-2.turso.io"
+  },
+  "observability": { "enabled": true }
+}

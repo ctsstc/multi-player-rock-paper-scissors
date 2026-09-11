@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Async Rock Paper Scissors</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1220; --card:#1a1e33; --line:#2b3150; --fg:#e8eaf6; --muted:#9aa0c3; --accent:#7c8cff; --win:#4ade80; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  h1 a { color:inherit; text-decoration:none; }
+  h2 { font-size:1.05rem; margin:0 0 12px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; margin-bottom:12px; color:var(--muted); font-size:.9rem; }
+  input, select { display:block; width:100%; margin-top:4px; padding:10px 12px; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; }
+  button { font:inherit; padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between; }
+  .throws { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .throws button { font-size:2.6rem; line-height:1; padding:18px 0 12px; background:var(--bg); border:2px solid var(--line); border-radius:12px; }
+  .throws button:hover:not(:disabled) { border-color:var(--accent); }
+  .throws small { display:block; font-size:.85rem; color:var(--muted); margin-top:8px; }
+  .players { list-style:none; padding:0; margin:0; }
+  .players li { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .players li:last-child { border-bottom:0; }
+  .tag { font-size:.75rem; color:var(--muted); margin-left:6px; }
+  table { width:100%; border-collapse:collapse; font-size:.95rem; }
+  th, td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:.8rem; }
+  .win { color:var(--win); font-weight:600; }
+  .muted { color:var(--muted); }
+  .banner { font-size:1.4rem; text-align:center; padding:24px 0; }
+  code { background:var(--bg); padding:2px 6px; border-radius:6px; }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#2b3150; color:#fff; padding:10px 16px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<main>
+  <h1><a href="/">✊ ✋ ✌️ Async RPS</a></h1>
+  <p class="sub">Rock paper scissors for people who are never online at the same time.</p>
+  <div id="app"></div>
+</main>
+<div id="toast"></div>
+<script>
+const EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
+const POLL_FAST_MS = 2500, POLL_SLOW_MS = 15000, FAST_WINDOW_MS = 2 * 60 * 1000;
+const $app = document.getElementById('app');
+const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+function playerId() {
+  let v = ls.get('rps:playerId');
+  if (!v) { v = crypto.randomUUID(); ls.set('rps:playerId', v); }
+  return v;
+}
+const savedName = () => ls.get('rps:name') || '';
+
+async function api(path, body) {
+  const res = await fetch('/api' + path, body
+    ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+    : undefined);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function home() {
+  const opts = (arr, sel) => arr.map((v) => `<option value="${v}"${v === sel ? ' selected' : ''}>${v}</option>`).join('');
+  $app.innerHTML = `
+    <form class="card" id="create">
+      <h2>New game</h2>
+      <label>Your name <input name="name" required maxlength="20" value="${esc(savedName())}"></label>
+      <label>Players <select name="playerCount">${opts([2, 3, 4, 5, 6, 7, 8], 3)}</select></label>
+      <label>Best of <select name="bestOf">${opts([1, 3, 5, 7], 3)}</select></label>
+      <button>Create game</button>
+    </form>
+    <form class="card" id="join">
+      <h2>Join a game</h2>
+      <label>Game code or link <input name="code" required placeholder="ABC123"></label>
+      <button class="ghost">Open game</button>
+    </form>`;
+
+  $app.querySelector('#create').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const name = String(f.get('name')).trim();
+    ls.set('rps:name', name);
+    try {
+      const { id } = await api('/games', {
+        playerId: playerId(), name,
+        playerCount: Number(f.get('playerCount')), bestOf: Number(f.get('bestOf')),
+      });
+      location.href = `/g/${id}`;
+    } catch (err) { toast(err.message); }
+  };
+  $app.querySelector('#join').onsubmit = (e) => {
+    e.preventDefault();
+    const raw = String(new FormData(e.target).get('code')).trim();
+    const code = (raw.split('/').filter(Boolean).pop() || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code) location.href = `/g/${code}`;
+  };
+}
+
+// A personal link carries the player id so the same seat works from another device.
+function adoptResumeId() {
+  const v = new URLSearchParams(location.search).get('me');
+  if (!v) return;
+  if (/^[A-Za-z0-9-]{8,64}$/.test(v)) ls.set('rps:playerId', v);
+  history.replaceState(null, '', location.pathname);
+}
+
+async function copyText(text, done) {
+  try { await navigator.clipboard.writeText(text); toast(done); } catch { prompt('Copy this link', text); }
+}
+
+function game(id) {
+  adoptResumeId();
+  const me = playerId();
+  const link = `${location.origin}/g/${id}`;
+  const myLink = `${link}?me=${me}`;
+  let state = null, busy = false, timer = null, seq = 0, lastChange = Date.now();
+
+  // Poll quickly while things are happening, then back off so idle tabs stay cheap.
+  function schedule() {
+    clearTimeout(timer);
+    if (!state || state.status === 'finished' || document.hidden) return;
+    timer = setTimeout(load, Date.now() - lastChange < FAST_WINDOW_MS ? POLL_FAST_MS : POLL_SLOW_MS);
+  }
+
+  function apply(next) {
+    const changed = JSON.stringify(next) !== JSON.stringify(state);
+    if (changed) lastChange = Date.now();
+    state = next;
+    const you = next.players.find((p) => p.you);
+    if (you) ls.set('rps:name', you.name);
+    return changed;
+  }
+
+  async function load() {
+    const my = ++seq;
+    try {
+      const s = await api(`/games/${id}?player=${me}`);
+      if (my !== seq) return;
+      if (apply(s)) render();
+    } catch (err) {
+      if (err.status === 404) {
+        $app.innerHTML = `<div class="card">No game called <code>${esc(id)}</code>. <a href="/">Go home</a></div>`;
+        return;
+      }
+      toast(err.message);
+    }
+    schedule();
+  }
+
+  async function post(path, body) {
+    if (busy) return;
+    busy = true;
+    render();
+    lastChange = Date.now();
+    try { apply(await api(path, body)); ++seq; } catch (err) { toast(err.message); }
+    busy = false;
+    render();
+    schedule();
+  }
+
+  function render() {
+    const active = document.activeElement;
+    if (active && active.tagName === 'INPUT' && $app.contains(active)) return;
+    const s = state;
+    let html = `<div class="card row">
+      <div>Game <code>${s.id}</code><br><span class="muted">${s.playerCount} players, best of ${s.bestOf} (first to ${s.target})</span></div>
+      <button class="ghost" id="copy">Copy invite link</button>
+    </div>`;
+
+    html += `<div class="card"><h2>Players</h2><ul class="players">` + s.players.map((p) => {
+      const lock = s.currentRound ? (s.currentRound.submitted.includes(p.name) ? '🔒 locked in' : '💭 thinking') : '';
+      return `<li><span>${esc(p.name)}${p.you ? '<span class="tag">(you)</span>' : ''}</span>
+        <span><span class="muted">${lock}</span> &nbsp; <b>${p.wins}</b> ${p.wins === 1 ? 'win' : 'wins'}</span></li>`;
+    }).join('') + `</ul>`;
+    if (s.status === 'waiting') {
+      const n = s.playerCount - s.players.length;
+      html += `<p class="muted">Waiting for ${n} more ${n === 1 ? 'player' : 'players'}. Share <code>${esc(link)}</code></p>`;
+    }
+    html += `</div>`;
+
+    if (s.status === 'waiting' && !s.joined) html += joinForm();
+    else if (s.status !== 'finished') html += playCard(s);
+    else html += `<div class="card banner">🏆 ${esc(s.winner)} wins!<br><a href="/" style="font-size:1rem">Start another game</a></div>`;
+
+    if (s.rounds.length) html += history(s);
+    if (s.joined) html += `<div class="card"><h2>Playing from another device?</h2>
+      <p class="muted">Your seat is tied to this browser. Open your personal link elsewhere to keep playing as ${esc(s.players.find((p) => p.you).name)}. Keep it to yourself: anyone with it can throw for you.</p>
+      <button class="ghost" id="copy-me">Copy my link</button></div>`;
+    $app.innerHTML = html;
+    wire();
+  }
+
+  function joinForm() {
+    return `<form class="card" id="joinform"><h2>Join this game</h2>
+      <label>Your name <input name="name" required maxlength="20" value="${esc(savedName())}"></label>
+      <button ${busy ? 'disabled' : ''}>Join</button></form>`;
+  }
+
+  function playCard(s) {
+    const r = s.currentRound;
+    if (!s.joined) return `<div class="card muted">Round ${r.round} in progress. You are spectating.</div>`;
+    if (r.yourChoice) {
+      const waiting = s.players.filter((p) => !r.submitted.includes(p.name)).map((p) => esc(p.name));
+      const open = s.playerCount - s.players.length;
+      if (open > 0) waiting.push(`${open} more ${open === 1 ? 'player' : 'players'} to join`);
+      return `<div class="card"><h2>Round ${r.round}</h2>
+        <p>You threw ${EMOJI[r.yourChoice]} ${r.yourChoice}. Waiting on ${waiting.join(', ')}.</p>
+        <p class="muted">Close the tab if you like. Come back whenever; this page also updates on its own.</p></div>`;
+    }
+    const hint = s.status === 'waiting' ? 'Pick one now, no need to wait for the others to join.' : 'Pick one.';
+    return `<div class="card"><h2>Round ${r.round}</h2>
+      <p class="muted">${hint} Nobody sees it until everyone has locked in.</p>
+      <div class="throws">${['rock', 'paper', 'scissors'].map((t) =>
+        `<button data-throw="${t}" ${busy ? 'disabled' : ''}>${EMOJI[t]}<small>${t}</small></button>`).join('')}</div></div>`;
+  }
+
+  function history(s) {
+    const rows = [...s.rounds].reverse().map((r) => {
+      const result = r.winningThrow
+        ? `<span class="win">${EMOJI[r.winningThrow]} ${r.winningThrow}</span> <span class="muted">${r.winners.map(esc).join(', ')}</span>`
+        : '<span class="muted">tie</span>';
+      return `<tr><td>${r.round}</td>${r.choices.map((c) => `<td>${EMOJI[c.choice]}</td>`).join('')}<td>${result}</td></tr>`;
+    }).join('');
+    return `<div class="card"><h2>Rounds</h2><div style="overflow-x:auto"><table>
+      <thead><tr><th>#</th>${s.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}<th>Result</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div>`;
+  }
+
+  function wire() {
+    $app.querySelector('#copy')?.addEventListener('click', () => copyText(link, 'Invite link copied'));
+    $app.querySelector('#copy-me')?.addEventListener('click', () => copyText(myLink, 'Personal link copied. Do not share it.'));
+    $app.querySelector('#joinform')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = String(new FormData(e.target).get('name')).trim();
+      ls.set('rps:name', name);
+      e.target.querySelector('input').blur();
+      post(`/games/${id}/join`, { playerId: me, name });
+    });
+    $app.querySelectorAll('[data-throw]').forEach((b) => b.addEventListener('click', () =>
+      post(`/games/${id}/choice`, { playerId: me, round: state.currentRound.round, choice: b.dataset.throw })));
+  }
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(timer); else { lastChange = Date.now(); load(); } });
+  load();
+}
+
+const code = (location.pathname.match(/^\/g\/([a-z0-9]+)/i) || [])[1];
+if (code) game(code.toUpperCase()); else home();
+</script>
+</body>
+</html>
