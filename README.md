@@ -87,6 +87,8 @@ npx github:ctsstc/multi-player-rock-paper-scissors throw CODE rock
 npx github:ctsstc/multi-player-rock-paper-scissors show CODE
 ```
 
+Everything in `package.json` is a devDependency on purpose: wrangler bundles the worker from `node_modules` either way, and keeping `dependencies` empty is what lets `npx` run the CLI from GitHub without installing anything.
+
 Your seat lives in `~/.config/async-rps/config.json`. `seat` prints the id and a link that moves the seat to a browser; `--me <id>` adopts a seat from a browser's personal link. `RPS_URL` points the CLI at another server, such as `http://localhost:8787` for `pnpm dev:local`. From a checkout, `pnpm cli` runs the same script.
 
 ## For agents
