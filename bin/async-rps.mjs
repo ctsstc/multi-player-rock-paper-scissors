@@ -22,6 +22,7 @@ const USAGE = `async-rps: rock paper scissors for people who are never online at
   async-rps show CODE                                        print the game
   async-rps play CODE [--mute]                               terminal UI: watch, join and throw
   async-rps seat                                             show your player id and how to move your seat
+  async-rps version                                          print the CLI version
 
 CODE may also be a full game link. --me ID adopts a seat from a personal link.
 Set RPS_URL to point at another server. Identity lives in ${CONFIG}.`;
@@ -157,6 +158,9 @@ async function main() {
   const me = identity(opts);
 
   switch (cmd) {
+    case 'version':
+      console.log(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+      return;
     case 'seat':
       console.log(`Player id: ${me.playerId}\nName: ${me.name}\nMove this seat to a browser: ${BASE}/g/CODE?me=${me.playerId}\nAdopt a browser seat here: async-rps seat --me <id from your personal link>`);
       return;
