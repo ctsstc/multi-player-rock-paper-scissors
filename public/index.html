@@ -30,7 +30,9 @@
   button { font:inherit; padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
   button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
-  button.icon { background:transparent; border:0; padding:0 0 0 6px; font-size:1rem; line-height:1; vertical-align:middle; }
+  button.icon { background:transparent; border:0; padding:0 0 0 6px; font-size:1rem; line-height:1; vertical-align:middle; flex:none; }
+  code.chip { display:inline-flex; align-items:center; max-width:100%; }
+  code.chip span { overflow-wrap:anywhere; }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between; }
   .throws { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
   .throws button { font-size:2.6rem; line-height:1; padding:18px 0 12px; background:var(--bg); border:2px solid var(--line); border-radius:12px; }
@@ -281,7 +283,7 @@ function game(id) {
     if (s.status === 'waiting') {
       const n = s.playerCount - s.players.length;
       html += `<p class="muted">Waiting for ${n} more ${n === 1 ? 'player' : 'players'}. Share
-        <code>${esc(link)}<button class="icon" id="copy-inline" title="Copy invite link" aria-label="Copy invite link">📋</button></code></p>`;
+        <code class="chip"><span>${esc(link)}</span><button class="icon" id="copy-inline" title="Copy invite link" aria-label="Copy invite link">📋</button></code></p>`;
     }
     html += `</div>`;
 
